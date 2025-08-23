@@ -80,7 +80,7 @@ async function run() {
       }
     });
 
-
+// --------------------------------------------------------
 // ✅ Get : Get user role by email
 app.get("/user/:email/role", async (req, res) => {
   try {
@@ -103,6 +103,40 @@ app.get("/user/:email/role", async (req, res) => {
     res.status(500).send({ message: "Failed to get role" });
   }
 });
+//----------------------------------------------------------------------
+
+
+
+
+
+
+// ✅ Get : Get user role by email (user / admin / member)
+app.get("/user/:email/role", async (req, res) => {
+  try {
+    const email = req.params.email;
+
+    if (!email) {
+      return res.status(400).send({ message: "Email is required" });
+    }
+
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      // ডাটাবেজে না থাকলে default হবে "user"
+      return res.send({ email, role: "user" });
+    }
+
+    // যদি user থাকে তাহলে তার role (user/admin/member যেটাই থাকুক) সেটাই return হবে
+    res.send({ email: user.email, role: user.role || "user" });
+  } catch (error) {
+    console.error("Error getting user role:", error);
+    res.status(500).send({ message: "Failed to get role" });
+  }
+});
+
+
+
+
 
 
 
