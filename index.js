@@ -80,6 +80,36 @@ async function run() {
       }
     });
 
+
+// ✅ Get : Get user role by email
+app.get("/user/:email/role", async (req, res) => {
+  try {
+    const email = req.params.email;
+
+    if (!email) {
+      return res.status(400).send({ message: "Email is required" });
+    }
+
+    const user = await usersCollection.findOne({ email });
+
+    if (!user) {
+      // যদি ডাটাবেজে না মিলে তাহলে default role user হবে
+      return res.send({ email, role: "user" });
+    }
+
+    res.send({ email: user.email, role: user.role || "user" });
+  } catch (error) {
+    console.error("Error getting user role:", error);
+    res.status(500).send({ message: "Failed to get role" });
+  }
+});
+
+
+
+
+
+
+
     // custom Middlewares
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -100,6 +130,64 @@ async function run() {
         return res.status(403).send({ message: "forbidden access" });
       }
     };
+
+    // 🔍 Search user by email
+    app.get("/users/search", async (req, res) => {
+      const { email } = req.query;
+      if (!email) {
+        return res
+          .status(400)
+          .send({ success: false, message: "Email is required" });
+      }
+
+      try {
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res
+            .status(404)
+            .send({ success: false, message: "User not found" });
+        }
+        res.send({ success: true, data: user });
+      } catch (error) {
+        res.status(500).send({ success: false, message: error.message });
+      }
+    });
+
+    // 🔑 Make or Remove Admin
+    app.patch("/users/:id", async (req, res) => {
+      const { id } = req.params;
+      const { role } = req.body;
+
+      // 🛑 যদি role না আসে
+      if (!role) {
+        return res.status(400).send({ message: "Role is required" });
+      }
+
+      let objectId;
+      try {
+        objectId = new ObjectId(id);
+      } catch (error) {
+        return res.status(400).send({ message: "Invalid user id" });
+      }
+
+      try {
+        const result = await usersCollection.updateOne(
+          { _id: objectId },
+          { $set: { role: role } }
+        );
+
+        if (result.modifiedCount === 0) {
+          return res
+            .status(404)
+            .send({ message: "User not found or role already set" });
+        }
+
+        res.send(result);
+      } catch (error) {
+        console.error("PATCH /users/:id error:", error);
+        res.status(500).send({ message: "Server error", error: error.message });
+      }
+    });
 
     // ✅ GET all coupons
     app.get("/coupons", async (req, res) => {
@@ -259,7 +347,7 @@ async function run() {
         console.log("Body:", req.body); // 👀 Check status আসছে কি না
 
         const id = req.params.id;
-        const { status,email } = req.body;
+        const { status, email } = req.body;
 
         if (!ObjectId.isValid(id)) {
           return res.status(400).send({
@@ -286,21 +374,22 @@ async function run() {
             message: "⚠️ Member not found or already updated",
           });
         }
-          
-       //update user role for accepting member
 
-      if(status==='active'){
-        const userQuery = {email
-        };
-        const userUpdatedDoc = {
-          $set:{
-            role:'member'
-          }
-        };
-        const roleResult = await usersCollection.updateOne(userQuery,userUpdatedDoc)
-        console.log( roleResult.modifiedCount);
-      }
+        //update user role for accepting member
 
+        if (status === "active") {
+          const userQuery = { email };
+          const userUpdatedDoc = {
+            $set: {
+              role: "member",
+            },
+          };
+          const roleResult = await usersCollection.updateOne(
+            userQuery,
+            userUpdatedDoc
+          );
+          console.log(roleResult.modifiedCount);
+        }
 
         res.send({
           success: true,
