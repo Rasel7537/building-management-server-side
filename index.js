@@ -54,6 +54,31 @@ async function run() {
     const paymentCollection = client
       .db("BMS_ApartmentDB")
       .collection("payments");
+    //members collection
+    const membersCollection = client
+      .db("BMS_ApartmentDB")
+      .collection("members");
+
+    // GET: load members who are in pending status
+    app.get("/members/pending", async (req, res) => {
+      try {
+        const pendingMembers = await membersCollection
+          .find({ status: "pending" })
+          .toArray();
+
+        res.send({
+          success: true,
+          count: pendingMembers.length,
+          data: pendingMembers,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch pending members",
+          error: error.message,
+        });
+      }
+    });
 
     // custom Middlewares
     const verifyFBToken = async (req, res, next) => {
@@ -176,6 +201,116 @@ async function run() {
         res.status(500).send({
           success: false,
           message: "Failed to fetch agreement",
+          error: error.message,
+        });
+      }
+    });
+
+    // get all members (all status)
+    app.get("/members", async (req, res) => {
+      try {
+        const members = await membersCollection.find().toArray();
+        res.send({ success: true, data: members });
+      } catch (error) {
+        res.status(500).send({ success: false, message: error.message });
+      }
+    });
+
+    //post the membersCollection
+    app.post("/members", async (req, res) => {
+      try {
+        const member = req.body;
+
+        if (!member.name || !member.email) {
+          return res.status(400).send({
+            success: false,
+            message: "Name and Email are required",
+          });
+        }
+
+        const result = await membersCollection.insertOne(member);
+
+        res.send({
+          success: true,
+          message: "Member added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        res.status(500).send({
+          success: false,
+          message: "Failed to add member",
+          error: error.message,
+        });
+      }
+    });
+
+    app.post("/member", async (req, res) => {
+      const member = req.body;
+      member.status = "pending"; // ✅ নতুন member হলে default pending
+      const result = await membersCollection.insertOne(member);
+      res.send(result);
+    });
+
+    // PATCH: Update member status
+    app.patch("/members/:id", async (req, res) => {
+      try {
+        console.log("🔹 Incoming PATCH request");
+        console.log("Params:", req.params); // 👀 Check ID আসছে কি না
+        console.log("Body:", req.body); // 👀 Check status আসছে কি না
+
+        const id = req.params.id;
+        const { status,email } = req.body;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({
+            success: false,
+            message: "❌ Invalid MongoDB ID",
+          });
+        }
+
+        if (!status) {
+          return res.status(400).send({
+            success: false,
+            message: "❌ Status field is missing in request body",
+          });
+        }
+
+        const query = { _id: new ObjectId(id) };
+        const updateDoc = { $set: { status } };
+
+        const result = await membersCollection.updateOne(query, updateDoc);
+
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "⚠️ Member not found or already updated",
+          });
+        }
+          
+       //update user role for accepting member
+
+      if(status==='active'){
+        const userQuery = {email
+        };
+        const userUpdatedDoc = {
+          $set:{
+            role:'member'
+          }
+        };
+        const roleResult = await usersCollection.updateOne(userQuery,userUpdatedDoc)
+        console.log( roleResult.modifiedCount);
+      }
+
+
+        res.send({
+          success: true,
+          message: `✅ Member status updated to ${status}`,
+        });
+      } catch (error) {
+        console.error("❌ Error in PATCH:", error.message);
+        res.status(500).send({
+          success: false,
+          message: "Server error",
           error: error.message,
         });
       }
@@ -557,5 +692,3 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
   console.log(`🚀 Server is running on port ${port}`);
 });
-
-
