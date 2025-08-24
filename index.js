@@ -268,7 +268,10 @@ async function run() {
     app.get("/coupons", async (req, res) => {
       try {
         const coupons = await couponCollection.find().toArray();
-        res.send(coupons);
+        res.send({
+          success: true,
+          data: coupons,
+        });
       } catch (error) {
         res.status(500).send({
           success: false,
@@ -508,16 +511,23 @@ async function run() {
     // ✅ POST: Add a new coupon
     app.post("/coupons", async (req, res) => {
       try {
-        const coupon = req.body;
+        const { code, discount, description } = req.body;
 
-        if (!coupon.title || !coupon.code || !coupon.description) {
+        if (!code || !discount || !description) {
           return res.status(400).send({
             success: false,
             message: "Missing coupon fields",
           });
         }
 
-        const result = await couponCollection.insertOne(coupon);
+        const newCoupon = {
+          code,
+          discount: Number(discount),
+          description,
+          createdAt: new Date(),
+        };
+
+        const result = await couponCollection.insertOne(newCoupon);
 
         res.send({
           success: true,
