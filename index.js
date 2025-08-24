@@ -59,6 +59,62 @@ async function run() {
       .db("BMS_ApartmentDB")
       .collection("members");
 
+    // Announcements collection
+    const announcementsCollection = client
+      .db("BMS_ApartmentDB")
+      .collection("announcements");
+
+    // get all pending agreement requests
+    app.get("/agreements", async (req, res) => {
+      const result = await agreementCollection
+        .find({ status: "pending" })
+        .toArray();
+      res.send(result);
+    });
+
+    // Accept request
+    app.patch("/agreements/accept/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+
+      // 1. update agreement status
+      const updateDoc = {
+        $set: { status: "checked" },
+      };
+      const result = await agreementCollection.updateOne(filter, updateDoc);
+
+      // 2. change user role to "member"
+      const agreement = await agreementCollection.findOne(filter);
+      if (agreement?.userEmail) {
+        await usersCollection.updateOne(
+          { email: agreement.userEmail },
+          { $set: { role: "member" } }
+        );
+      }
+
+      res.send(result);
+    });
+
+    // Reject request
+    app.patch("/agreements/reject/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+
+      // only change status, keep role same
+      const updateDoc = {
+        $set: { status: "checked" },
+      };
+      const result = await agreementCollection.updateOne(filter, updateDoc);
+
+      res.send(result);
+    });
+
+    // get all announcements
+    app.get("/announcements", async (req, res) => {
+      const result = await announcementsCollection.find().toArray();
+      res.send(result);
+    });
+
     // GET: load members who are in pending status
     app.get("/members/pending", async (req, res) => {
       try {
@@ -80,69 +136,54 @@ async function run() {
       }
     });
 
-// --------------------------------------------------------
-// ✅ Get : Get user role by email
-app.get("/user/:email/role", async (req, res) => {
-  try {
-    const email = req.params.email;
+    // --------------------------------------------------------
+    // ✅ Get : Get user role by email
+    app.get("/user/:email/role", async (req, res) => {
+      try {
+        const email = req.params.email;
 
-    if (!email) {
-      return res.status(400).send({ message: "Email is required" });
-    }
+        if (!email) {
+          return res.status(400).send({ message: "Email is required" });
+        }
 
-    const user = await usersCollection.findOne({ email });
+        const user = await usersCollection.findOne({ email });
 
-    if (!user) {
-      // যদি ডাটাবেজে না মিলে তাহলে default role user হবে
-      return res.send({ email, role: "user" });
-    }
+        if (!user) {
+          // যদি ডাটাবেজে না মিলে তাহলে default role user হবে
+          return res.send({ email, role: "user" });
+        }
 
-    res.send({ email: user.email, role: user.role || "user" });
-  } catch (error) {
-    console.error("Error getting user role:", error);
-    res.status(500).send({ message: "Failed to get role" });
-  }
-});
-//----------------------------------------------------------------------
+        res.send({ email: user.email, role: user.role || "user" });
+      } catch (error) {
+        console.error("Error getting user role:", error);
+        res.status(500).send({ message: "Failed to get role" });
+      }
+    });
+    //----------------------------------------------------------------------
 
+    // ✅ Get : Get user role by email (user / admin / member)
+    app.get("/user/:email/role", async (req, res) => {
+      try {
+        const email = req.params.email;
 
+        if (!email) {
+          return res.status(400).send({ message: "Email is required" });
+        }
 
+        const user = await usersCollection.findOne({ email });
 
+        if (!user) {
+          // ডাটাবেজে না থাকলে default হবে "user"
+          return res.send({ email, role: "user" });
+        }
 
-
-// ✅ Get : Get user role by email (user / admin / member)
-app.get("/user/:email/role", async (req, res) => {
-  try {
-    const email = req.params.email;
-
-    if (!email) {
-      return res.status(400).send({ message: "Email is required" });
-    }
-
-    const user = await usersCollection.findOne({ email });
-
-    if (!user) {
-      // ডাটাবেজে না থাকলে default হবে "user"
-      return res.send({ email, role: "user" });
-    }
-
-    // যদি user থাকে তাহলে তার role (user/admin/member যেটাই থাকুক) সেটাই return হবে
-    res.send({ email: user.email, role: user.role || "user" });
-  } catch (error) {
-    console.error("Error getting user role:", error);
-    res.status(500).send({ message: "Failed to get role" });
-  }
-});
-
-
-
-
-
-
-
-
-
-
+        // যদি user থাকে তাহলে তার role (user/admin/member যেটাই থাকুক) সেটাই return হবে
+        res.send({ email: user.email, role: user.role || "user" });
+      } catch (error) {
+        console.error("Error getting user role:", error);
+        res.status(500).send({ message: "Failed to get role" });
+      }
+    });
 
     // custom Middlewares
     const verifyFBToken = async (req, res, next) => {
@@ -366,6 +407,14 @@ app.get("/user/:email/role", async (req, res) => {
       }
     });
 
+    // post announcement
+    app.post("/announcements", async (req, res) => {
+      const announcement = req.body; // {title, description, date}
+      announcement.date = new Date(); // extra: তারিখ সেভ করতে পারো
+      const result = await announcementsCollection.insertOne(announcement);
+      res.send(result);
+    });
+
     app.post("/member", async (req, res) => {
       const member = req.body;
       member.status = "pending"; // ✅ নতুন member হলে default pending
@@ -437,6 +486,23 @@ app.get("/user/:email/role", async (req, res) => {
           error: error.message,
         });
       }
+    });
+
+    // get all members
+    app.get("/users/members", async (req, res) => {
+      const members = await usersCollection.find({ role: "member" }).toArray();
+      res.send(members);
+    });
+
+    // remove member (change role to user)
+    app.patch("/users/remove-member/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: { role: "user" },
+      };
+      const result = await usersCollection.updateOne(filter, updateDoc);
+      res.send(result);
     });
 
     // ✅ POST: Add a new coupon
@@ -674,6 +740,7 @@ app.get("/user/:email/role", async (req, res) => {
           });
         }
 
+        // ✅ Added extra default fields (agreementAcceptDate & rentedApartment)
         const newUser = {
           name: user.name || "Anonymous",
           email: user.email,
@@ -681,6 +748,15 @@ app.get("/user/:email/role", async (req, res) => {
             user.photoURL || "https://i.ibb.co/2nqZQFz/default-avatar.png",
           role: "user",
           createdAt: new Date(),
+          lastLogin: new Date(), // 👉 optional: track login time
+
+          // ✅ Default values for normal user
+          agreementAcceptDate: null,
+          rentedApartment: {
+            floor: null,
+            block: null,
+            roomNo: null,
+          },
         };
 
         const result = await usersCollection.insertOne(newUser);
