@@ -16,7 +16,9 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const serviceAccount = require("./firebase-admin-key.json");
+
+const decodedKey =Buffer.from(process.env.FB_SERVICE_KEY,'base64').toString('utf-8'); 
+const serviceAccount = JSON.parse(decodedKey);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -34,7 +36,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     const apartmentCollection = client
       .db("BMS_ApartmentDB")
@@ -72,34 +74,97 @@ async function run() {
       res.send(result);
     });
 
-    // Accept request
-    app.patch("/agreements/accept/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = { _id: new ObjectId(id) };
 
-      // 1. update agreement status
-      const updateDoc = {
-        $set: { status: "checked" },
-      };
-      const result = await agreementCollection.updateOne(filter, updateDoc);
+   
+// =========================
+// Admin Profile Summary API
+// =========================
+app.get("/admin/summary", async (req, res) => {
+  try {
+    // 🔹 1. Admin info (ধরি যিনি admin তিনি প্রথম user যাঁর role: "admin")
+    const admin = await usersCollection.findOne({ role: "admin" }, { projection: { name: 1, email: 1, photoURL: 1 } });
 
-      // 2. change user role to "member"
-      const agreement = await agreementCollection.findOne(filter);
-      if (agreement?.userEmail) {
-        await usersCollection.updateOne(
-          { email: agreement.userEmail },
-          { $set: { role: "member" } }
-        );
-      }
+    // 🔹 2. Apartments info
+    const totalRooms = await apartmentCollection.countDocuments();
+    const availableRooms = await apartmentCollection.countDocuments({ status: "available" });
+    const unavailableRooms = totalRooms - availableRooms;
 
-      res.send(result);
+    const availablePercentage = totalRooms > 0 ? (availableRooms / totalRooms) * 100 : 0;
+    const unavailablePercentage = totalRooms > 0 ? (unavailableRooms / totalRooms) * 100 : 0;
+
+    // 🔹 3. Users info
+    const totalUsers = await usersCollection.countDocuments();
+    const totalMembers = await usersCollection.countDocuments({ role: "member" });
+
+    res.send({
+      success: true,
+      data: {
+        admin: {
+          name: admin?.name || "Admin",
+          email: admin?.email || "Not Found",
+          image: admin?.photoURL || "https://i.ibb.co/2nqZQFz/default-avatar.png"
+        },
+        apartments: {
+          totalRooms,
+          availablePercentage: availablePercentage.toFixed(2),
+          unavailablePercentage: unavailablePercentage.toFixed(2),
+        },
+        users: {
+          totalUsers,
+          totalMembers,
+        },
+      },
     });
+  } catch (error) {
+    console.error("❌ Error in /admin/summary:", error.message);
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch admin summary",
+      error: error.message,
+    });
+  }
+});
+
+
+
+
+
+
+
+
+// Accept request
+app.patch("/agreements/accept/:id", async (req, res) => {
+  const id = req.params.id;
+  const filter = { _id: new ObjectId(id) };
+
+  // 1. update agreement status + acceptedDate
+  const updateDoc = {
+    $set: { 
+      status: "checked",
+      acceptedDate: new Date()  // ✅ নতুন যোগ হলো
+    },
+  };
+  const result = await agreementCollection.updateOne(filter, updateDoc);
+
+  // 2. change user role to "member"
+  const agreement = await agreementCollection.findOne(filter);
+  if (agreement?.userEmail) {
+    await usersCollection.updateOne(
+      { email: agreement.userEmail },
+      { $set: { role: "member", acceptedDate: new Date() } } // ✅ চাইলে user collection এও রাখতে পারো
+    );
+  }
+
+  res.send(result);
+});
+
+
 
     // Reject request
     app.patch("/agreements/reject/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
-
+      
       // only change status, keep role same
       const updateDoc = {
         $set: { status: "checked" },
@@ -884,8 +949,8 @@ async function run() {
     });
 
     // ✅ Connection check
-    await client.db("admin").command({ ping: 1 });
-    console.log("✅ Connected to MongoDB");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("✅ Connected to MongoDB");
   } finally {
     // await client.close();
   }
