@@ -573,40 +573,189 @@ app.patch("/agreements/accept/:id", async (req, res) => {
       res.send(result);
     });
 
-    // ✅ POST: Add a new coupon
-    app.post("/coupons", async (req, res) => {
-      try {
-        const { code, discount, description } = req.body;
+    // // ✅ POST: Add a new coupon
+    // app.post("/coupons", async (req, res) => {
+    //   try {
+    //     const { code, discount, description } = req.body;
 
-        if (!code || !discount || !description) {
-          return res.status(400).send({
-            success: false,
-            message: "Missing coupon fields",
-          });
-        }
+    //     if (!code || !discount || !description) {
+    //       return res.status(400).send({
+    //         success: false,
+    //         message: "Missing coupon fields",
+    //       });
+    //     }
 
-        const newCoupon = {
-          code,
-          discount: Number(discount),
-          description,
-          createdAt: new Date(),
-        };
+    //     const newCoupon = {
+    //       code,
+    //       discount: Number(discount),
+    //       description,
+    //       createdAt: new Date(),
+    //     };
 
-        const result = await couponCollection.insertOne(newCoupon);
+    //     const result = await couponCollection.insertOne(newCoupon);
 
-        res.send({
-          success: true,
-          message: "Coupon added successfully",
-          data: result,
-        });
-      } catch (error) {
-        res.status(500).send({
-          success: false,
-          message: "Failed to add coupon",
-          error: error.message,
-        });
-      }
+    //     res.send({
+    //       success: true,
+    //       message: "Coupon added successfully",
+    //       data: result,
+    //     });
+    //   } catch (error) {
+    //     res.status(500).send({
+    //       success: false,
+    //       message: "Failed to add coupon",
+    //       error: error.message,
+    //     });
+    //   }
+    // });
+
+
+
+
+
+
+
+
+
+
+// ✅ COUPONS API
+
+// POST: Add a new coupon
+app.post("/coupons", async (req, res) => {
+  try {
+    const { code, discount, description } = req.body;
+
+    if (!code || !discount || !description) {
+      return res.status(400).send({
+        success: false,
+        message: "Missing coupon fields",
+      });
+    }
+
+    const newCoupon = {
+      code,
+      discount: Number(discount),
+      description,
+      status: "active", // ✅ ডিফল্ট ভাবে নতুন কুপন active থাকবে
+      createdAt: new Date(),
+    };
+
+    const result = await couponCollection.insertOne(newCoupon);
+
+    res.send({
+      success: true,
+      message: "Coupon added successfully",
+      data: result,
     });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to add coupon",
+      error: error.message,
+    });
+  }
+});
+
+
+// GET: All coupons
+app.get("/coupons", async (req, res) => {
+  try {
+    const coupons = await couponCollection.find().toArray();
+    res.send({ success: true, data: coupons });
+  } catch (error) {
+    res.status(500).send({ success: false, message: error.message });
+  }
+});
+
+// ✅ GET: Only active coupons (optional for frontend)
+app.get("/coupons/active", async (req, res) => {
+  try {
+    const coupons = await couponCollection.find({ status: "active" }).toArray();
+    res.send({ success: true, data: coupons });
+  } catch (error) {
+    res.status(500).send({ success: false, message: error.message });
+  }
+});
+
+// ✅ PATCH: Change coupon availability (Admin only)
+app.patch("/coupons/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // expected: "active" / "inactive"
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ success: false, message: "Invalid coupon ID" });
+    }
+
+    if (!status || !["active", "inactive"].includes(status)) {
+      return res.status(400).send({ success: false, message: "Invalid status value" });
+    }
+
+    const query = { _id: new ObjectId(id) };
+    const updateDoc = { $set: { status } };
+
+    const result = await couponCollection.updateOne(query, updateDoc);
+
+    if (result.modifiedCount === 0) {
+      return res
+        .status(404)
+        .send({ success: false, message: "Coupon not found or already in same status" });
+    }
+
+    res.send({ success: true, message: `Coupon status updated to ${status}` });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to update coupon status",
+      error: error.message,
+    });
+  }
+});
+
+// DELETE: Remove a coupon
+app.delete("/coupons/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ success: false, message: "Invalid coupon ID" });
+    }
+
+    const query = { _id: new ObjectId(id) };
+    const result = await couponCollection.deleteOne(query);
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ success: false, message: "Coupon not found" });
+    }
+
+    res.send({ success: true, message: "Coupon deleted successfully" });
+  } catch (error) {
+    res.status(500).send({ success: false, message: error.message });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     const announcementCollection = client
       .db("BMS_ApartmentDB")
